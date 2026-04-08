@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const LAST_KNOWN_GOOD_URL: &str =
     "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json";
@@ -96,6 +97,39 @@ pub fn find_installed_chrome() -> Option<PathBuf> {
         let _ = writeln!(io::stderr(), "[chrome-search] no installed Chrome found");
     }
     None
+}
+
+/// Build an install directory name for manual archives.
+///
+/// We avoid requiring network version lookup when `--archive` is used by
+/// creating a deterministic cache folder under `~/.agent-browser/browsers`.
+fn manual_install_dir_name(archive_path: &str) -> String {
+    let stem = Path::new(archive_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("archive");
+    let safe_stem: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    let suffix = if safe_stem.is_empty() {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        format!("timestamp-{}", ts)
+    } else {
+        safe_stem
+    };
+
+    format!("chrome-manual-{}", suffix)
 }
 
 fn chrome_binary_in_dir(dir: &Path) -> Option<PathBuf> {
@@ -397,7 +431,7 @@ fn extract_zip(bytes: Vec<u8>, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub fn run_install(with_deps: bool) {
+pub fn run_install(with_deps: bool, archive_path: Option<&str>) {
     if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
         eprintln!(
             "{} Chrome for Testing does not provide Linux ARM64 builds.",
@@ -439,36 +473,85 @@ pub fn run_install(with_deps: bool) {
             exit(1);
         });
 
-    let (version, url) = match rt.block_on(fetch_download_url()) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("{} {}", color::error_indicator(), e);
-            exit(1);
-        }
-    };
-
-    let dest = get_browsers_dir().join(format!("chrome-{}", version));
-
-    if let Some(bin) = chrome_binary_in_dir(&dest) {
-        if bin.exists() {
-            println!(
-                "{} Chrome {} is already installed",
-                color::success_indicator(),
-                version
+    let (display_version, dest, bytes) = if let Some(path) = archive_path {
+        let archive = Path::new(path);
+        if !archive.exists() {
+            eprintln!(
+                "{} Local archive does not exist: {}",
+                color::error_indicator(),
+                archive.display()
             );
-            return;
-        }
-    }
-
-    println!("  Downloading Chrome {} for {}", version, platform_key());
-    println!("  {}", url);
-
-    let bytes = match rt.block_on(download_bytes(&url)) {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("{} {}", color::error_indicator(), e);
             exit(1);
         }
+        if !archive.is_file() {
+            eprintln!(
+                "{} Local archive path is not a file: {}",
+                color::error_indicator(),
+                archive.display()
+            );
+            exit(1);
+        }
+
+        let dest = get_browsers_dir().join(manual_install_dir_name(path));
+        if let Some(bin) = chrome_binary_in_dir(&dest) {
+            if bin.exists() {
+                println!(
+                    "{} Chrome from local archive is already installed",
+                    color::success_indicator()
+                );
+                println!("  Location: {}", dest.display());
+                return;
+            }
+        }
+
+        println!(
+            "  Installing Chrome from local archive {}",
+            archive.display()
+        );
+        let bytes = fs::read(archive).unwrap_or_else(|e| {
+            eprintln!(
+                "{} Failed to read local archive {}: {}",
+                color::error_indicator(),
+                archive.display(),
+                e
+            );
+            exit(1);
+        });
+        ("manual archive".to_string(), dest, bytes)
+    } else {
+        let (version, url) = match rt.block_on(fetch_download_url()) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("{} {}", color::error_indicator(), e);
+                exit(1);
+            }
+        };
+
+        let dest = get_browsers_dir().join(format!("chrome-{}", version));
+
+        if let Some(bin) = chrome_binary_in_dir(&dest) {
+            if bin.exists() {
+                println!(
+                    "{} Chrome {} is already installed",
+                    color::success_indicator(),
+                    version
+                );
+                return;
+            }
+        }
+
+        println!("  Downloading Chrome {} for {}", version, platform_key());
+        println!("  {}", url);
+
+        let bytes = match rt.block_on(download_bytes(&url)) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("{} {}", color::error_indicator(), e);
+                exit(1);
+            }
+        };
+
+        (version, dest, bytes)
     };
 
     match extract_zip(bytes, &dest) {
@@ -476,7 +559,7 @@ pub fn run_install(with_deps: bool) {
             println!(
                 "{} Chrome {} installed successfully",
                 color::success_indicator(),
-                version
+                display_version
             );
             println!("  Location: {}", dest.display());
 

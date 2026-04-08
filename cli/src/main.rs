@@ -640,8 +640,11 @@ fn main() {
 
     // Handle install separately
     if clean.first().map(|s| s.as_str()) == Some("install") {
-        let with_deps = args.iter().any(|a| a == "--with-deps" || a == "-d");
-        run_install(with_deps);
+        let (with_deps, archive_path) = parse_install_args(&args).unwrap_or_else(|e| {
+            eprintln!("{} {}", color::error_indicator(), e);
+            exit(1);
+        });
+        run_install(with_deps, archive_path.as_deref());
         return;
     }
 
@@ -1354,6 +1357,36 @@ fn main() {
     }
 }
 
+/// Parse arguments for the standalone `install` subcommand.
+///
+/// Supported options:
+/// - `--with-deps` / `-d`
+/// - `--archive <path>` / `-a <path>`
+fn parse_install_args(args: &[String]) -> Result<(bool, Option<String>), String> {
+    let mut with_deps = false;
+    let mut archive_path: Option<String> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--with-deps" | "-d" => {
+                with_deps = true;
+            }
+            "--archive" | "-a" => {
+                let Some(path) = args.get(i + 1) else {
+                    return Err("--archive requires a file path".to_string());
+                };
+                archive_path = Some(path.clone());
+                i += 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+
+    Ok((with_deps, archive_path))
+}
+
 fn run_batch(flags: &Flags, bail: bool, arg_commands: Option<Vec<Vec<String>>>) {
     let commands: Vec<Vec<String>> = if let Some(cmds) = arg_commands {
         cmds
@@ -1569,5 +1602,37 @@ mod tests {
             parsed["error"],
             "Daemon process exited during startup:\nline \"quoted\"\u{001b}[2mansi\u{001b}[22m"
         );
+    }
+
+    #[test]
+    fn test_parse_install_args_with_archive() {
+        let args = vec![
+            "install".to_string(),
+            "--archive".to_string(),
+            "/tmp/chrome.zip".to_string(),
+        ];
+        let (with_deps, archive) = parse_install_args(&args).unwrap();
+        assert!(!with_deps);
+        assert_eq!(archive.as_deref(), Some("/tmp/chrome.zip"));
+    }
+
+    #[test]
+    fn test_parse_install_args_short_flags() {
+        let args = vec![
+            "install".to_string(),
+            "-d".to_string(),
+            "-a".to_string(),
+            "chrome.zip".to_string(),
+        ];
+        let (with_deps, archive) = parse_install_args(&args).unwrap();
+        assert!(with_deps);
+        assert_eq!(archive.as_deref(), Some("chrome.zip"));
+    }
+
+    #[test]
+    fn test_parse_install_args_archive_requires_value() {
+        let args = vec!["install".to_string(), "--archive".to_string()];
+        let err = parse_install_args(&args).unwrap_err();
+        assert!(err.contains("requires a file path"));
     }
 }
