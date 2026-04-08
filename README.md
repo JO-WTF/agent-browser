@@ -11,6 +11,8 @@ Installs the native Rust binary:
 ```bash
 npm install -g agent-browser
 agent-browser install  # Download Chrome from Chrome for Testing (first time only)
+# Or use a pre-downloaded archive if network is unreliable
+agent-browser install --archive ./chrome-linux64.zip
 ```
 
 ### Project Installation (local dependency)
@@ -56,6 +58,12 @@ On Linux, install system dependencies:
 
 ```bash
 agent-browser install --with-deps
+```
+
+If your network is unreliable, you can install from a local archive:
+
+```bash
+agent-browser install --archive /path/to/chrome-<platform>.zip
 ```
 
 ### Updating
@@ -368,6 +376,7 @@ agent-browser reload                  # Reload page
 ```bash
 agent-browser install                 # Download Chrome from Chrome for Testing (Google's official automation channel)
 agent-browser install --with-deps     # Also install system deps (Linux)
+agent-browser install --archive ./chrome-linux64.zip  # Install from local archive
 agent-browser upgrade                 # Upgrade agent-browser to the latest version
 ```
 

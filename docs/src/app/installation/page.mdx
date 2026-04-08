@@ -7,6 +7,8 @@ Installs the native Rust binary for maximum performance:
 ```bash
 npm install -g agent-browser
 agent-browser install  # Download Chrome from Chrome for Testing (first time)
+# or install from a pre-downloaded archive
+agent-browser install --archive ./chrome-linux64.zip
 ```
 
 This is the fastest option -- commands run through the native Rust CLI directly with sub-millisecond parsing overhead.
@@ -63,6 +65,12 @@ On Linux, install system dependencies:
 
 ```bash
 agent-browser install --with-deps
+```
+
+If your network is unstable, install from a local archive instead of downloading:
+
+```bash
+agent-browser install --archive /path/to/chrome-<platform>.zip
 ```
 
 ## Updating

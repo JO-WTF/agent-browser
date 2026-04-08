@@ -2365,16 +2365,18 @@ Examples:
             r##"
 agent-browser install - Install browser binaries
 
-Usage: agent-browser install [--with-deps]
+Usage: agent-browser install [--with-deps] [--archive <path>]
 
 Downloads and installs browser binaries required for automation.
 
 Options:
   -d, --with-deps      Also install system dependencies (Linux only)
+  -a, --archive <path> Install from a local Chrome zip archive instead of downloading
 
 Examples:
   agent-browser install
   agent-browser install --with-deps
+  agent-browser install --archive ./chrome-linux64.zip
 "##
         }
 
@@ -2840,6 +2842,7 @@ Dashboard:
 Setup:
   install                    Install browser binaries
   install --with-deps        Also install system dependencies (Linux)
+  install --archive <path>   Install Chrome from a local zip archive
   upgrade                    Upgrade to the latest version
   dashboard start            Start the observability dashboard
   profiles                   List available Chrome profiles
